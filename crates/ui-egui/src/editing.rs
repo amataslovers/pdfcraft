@@ -976,9 +976,27 @@ fn short_name(path: &str) -> String {
     std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string())
 }
 
+/// KawanEditor: receives every download (name, bytes) instead of an `<a download>`.
+#[cfg(target_arch = "wasm32")]
+pub type DownloadHook = Box<dyn Fn(&str, &[u8])>;
+
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static DOWNLOAD_HOOK: std::cell::RefCell<Option<DownloadHook>> = const { std::cell::RefCell::new(None) };
+}
+
+/// KawanEditor: hand every download (exports, split/combine results…) to the embedding page.
+#[cfg(target_arch = "wasm32")]
+pub fn set_download_hook(hook: DownloadHook) {
+    DOWNLOAD_HOOK.with(|h| *h.borrow_mut() = Some(hook));
+}
+
 /// Offer bytes as a browser download.
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn download(name: &str, bytes: &[u8]) -> Result<(), String> {
+    if DOWNLOAD_HOOK.with(|h| h.borrow().as_ref().map(|hook| hook(name, bytes)).is_some()) {
+        return Ok(());
+    }
     use wasm_bindgen::JsCast;
     let err = |e: wasm_bindgen::JsValue| format!("{e:?}");
     let array = js_sys::Uint8Array::from(bytes);

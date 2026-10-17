@@ -4,6 +4,9 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 #[cfg(target_arch = "wasm32")]
+mod kawan;
+
+#[cfg(target_arch = "wasm32")]
 fn main() {
     use eframe::wasm_bindgen::JsCast;
     use pdfcraft_ui_egui::PdfCraftApp;
@@ -17,6 +20,9 @@ fn main() {
         else {
             return;
         };
+        // `?host=kawan`: KawanEditor drives PdfCraft from its parent page (`kawan`).
+        let kawan = kawan::web::Bridge::from_url().map(std::rc::Rc::new);
+        let app_kawan = kawan.clone();
         let started = eframe::WebRunner::new()
             .start(
                 canvas,
@@ -26,6 +32,10 @@ fn main() {
                     // "printcraft": settings saved under the app's former name, PrintCraft.
                     if let Some(json) = cc.storage.and_then(|s| s.get_string("pdfcraft").or_else(|| s.get_string("printcraft"))) {
                         app.restore(&json);
+                    }
+                    if let Some(k) = app_kawan {
+                        kawan::attach(&mut app, &k, &cc.egui_ctx);
+                        return Ok(Box::new(kawan::shell::KawanShell { app, bridge: k }));
                     }
                     // `?file=<url>` opens a PDF from a URL (same-origin or CORS-enabled).
                     if let Some(url) = query_param("file") {
@@ -77,6 +87,9 @@ fn main() {
             .await;
         if let Err(e) = started {
             eframe::web_sys::console::error_1(&e);
+            if let Some(k) = &kawan {
+                k.post_start_failed(&e.as_string().unwrap_or_else(|| format!("{e:?}")));
+            }
             if query_param("host").as_deref() == Some("parent")
                 && let Some(bridge) = host::Bridge::new()
             {
