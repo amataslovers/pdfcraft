@@ -602,7 +602,7 @@ impl Document {
     }
 
     pub fn editable(&self) -> bool {
-        self.editor.is_some()
+        self.editor.is_some() && !crate::kawan::read_only()
     }
 
     /// What the opening password allows; `None` when the document is not encrypted.
@@ -3290,6 +3290,9 @@ impl Session {
 
     /// Apply an edit. On success the previous state is undoable and the view data is refreshed.
     pub fn apply(&mut self, id: DocId, edit: Edit) -> Result<(), EditError> {
+        if crate::kawan::read_only() {
+            return Err(EditError::ReadOnly("read-only".into()));
+        }
         let now = self.now();
         let today = self.today();
         let js_off = self.js_off;

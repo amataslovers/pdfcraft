@@ -1,5 +1,8 @@
 //! PdfCraft as a KawanEditor bridge host.
 
+use std::cell::Cell;
+
+use pdfcraft_engine::DocId;
 use pdfcraft_engine::commands::{COMMANDS, Needs};
 use pdfcraft_ui_egui::{PdfCraftApp, SaveTarget};
 use serde_json::Value;
@@ -10,6 +13,21 @@ use super::web::Outbox;
 
 /// The app, and the bridge outbox its `host_save` hook writes into.
 pub struct PdfHost<'a>(pub &'a mut PdfCraftApp, pub Outbox);
+
+thread_local! {
+    /// The document the page opened. A user can open more (drop a file, view a signed version);
+    /// the bridge only ever saves this one, under the page's key.
+    static OPENED: Cell<Option<DocId>> = const { Cell::new(None) };
+}
+
+impl PdfHost<'_> {
+    /// The opened document's tab index and id, wherever its tab now is.
+    fn opened(&self) -> Result<(usize, DocId), String> {
+        let id = OPENED.with(Cell::get).ok_or("no document")?;
+        let index = self.0.views.iter().position(|v| v.id == id).ok_or("the document was closed")?;
+        Ok((index, id))
+    }
+}
 
 fn pdf_name(name: &str) -> String {
     if name.to_ascii_lowercase().ends_with(".pdf") { name.to_string() } else { format!("{name}.pdf") }
@@ -30,14 +48,16 @@ const ALSO_MUTATING: &[&str] = &[
 
 impl Host for PdfHost<'_> {
     fn open(&mut self, name: &str, bytes: Vec<u8>) -> Result<(), String> {
-        self.0.open_bytes(name, None, bytes)
+        self.0.open_bytes(name, None, bytes)?;
+        OPENED.with(|o| o.set(self.0.active_ids().map(|(_, id)| id)));
+        Ok(())
     }
 
     fn save(&mut self) -> Result<(String, Vec<u8>), String> {
-        self.0.active_ids().ok_or("no document")?;
+        let (index, _) = self.opened()?;
         // PdfCraft's own Save (flattens fill & sign, marks saved), which hands its bytes to `host_save`.
         // The bridge's own save: the host's command deny list does not apply to it.
-        if !policy::as_host(|| self.0.save_active(SaveTarget::InPlace)) {
+        if !policy::as_host(|| self.0.save_view(index, SaveTarget::InPlace)) {
             return Err("PdfCraft could not save the document".into());
         }
         let file = self.1.borrow_mut().pop().ok_or("PdfCraft saved nothing")?;
@@ -46,7 +66,7 @@ impl Host for PdfHost<'_> {
 
     fn export_copy(&mut self) -> Result<(String, Vec<u8>), String> {
         // ponytail: the current bytes without Save's fill & sign flattening; a download copy only.
-        let (_, id) = self.0.active_ids().ok_or("no document")?;
+        let (_, id) = self.opened()?;
         let name = self.0.session.get(id).map(|d| pdf_name(&d.name)).ok_or("no document")?;
         let bytes = self.0.session.save_bytes(id).map_err(|e| e.to_string())?;
         Ok((name, bytes.to_vec()))
@@ -70,7 +90,7 @@ impl Host for PdfHost<'_> {
     }
 
     fn revision(&self) -> u64 {
-        self.0.active_ids().and_then(|(_, id)| self.0.session.get(id)).map_or(0, |d| d.edit_generation())
+        self.opened().ok().and_then(|(_, id)| self.0.session.get(id)).map_or(0, |d| d.edit_generation())
     }
 
     fn set_author(&mut self, name: &str) {
@@ -79,7 +99,12 @@ impl Host for PdfHost<'_> {
 
     fn set_policy(&mut self, mut p: Policy) {
         p.mutating = COMMANDS.iter().filter(|c| mutates(c.needs)).map(|c| c.id.to_string()).chain(ALSO_MUTATING.iter().map(|s| s.to_string())).collect();
+        let read_only = p.read_only;
         policy::set(p);
+        if read_only {
+            // Only the layout: editable() and Session::apply already refuse edits.
+            let _ = self.0.set_option("mode", "read");
+        }
     }
 
     fn classify(&self, _name: &str) -> Classify {
