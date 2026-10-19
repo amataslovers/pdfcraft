@@ -4,6 +4,7 @@ use pdfcraft_engine::commands::{COMMANDS, Needs};
 use pdfcraft_ui_egui::{PdfCraftApp, SaveTarget};
 use serde_json::Value;
 
+use super::policy::{self, Policy};
 use super::protocol::{Classify, CommandInfo, Host};
 use super::web::Outbox;
 
@@ -19,6 +20,14 @@ fn mutates(needs: Needs) -> bool {
     !matches!(needs, Needs::Nothing | Needs::Document | Needs::Copying | Needs::Undo | Needs::Redo | Needs::TwoPageView)
 }
 
+/// Commands that change the document although their `Needs` says otherwise, or open another one
+/// (a save would then hand that one to the page under this document's key),
+/// and the user's own saves: view mode saves nothing.
+const ALSO_MUTATING: &[&str] = &[
+    "edit.undo", "edit.redo", "file.revert", "a11y.autotag", "a11y.reading_options", "sign.*", "optimize.*", "standards.pdfa", "file.open*",
+    "file.close*", "create.*", "file.save*",
+];
+
 impl Host for PdfHost<'_> {
     fn open(&mut self, name: &str, bytes: Vec<u8>) -> Result<(), String> {
         self.0.open_bytes(name, None, bytes)
@@ -27,7 +36,8 @@ impl Host for PdfHost<'_> {
     fn save(&mut self) -> Result<(String, Vec<u8>), String> {
         self.0.active_ids().ok_or("no document")?;
         // PdfCraft's own Save (flattens fill & sign, marks saved), which hands its bytes to `host_save`.
-        if !self.0.save_active(SaveTarget::InPlace) {
+        // The bridge's own save: the host's command deny list does not apply to it.
+        if !policy::as_host(|| self.0.save_active(SaveTarget::InPlace)) {
             return Err("PdfCraft could not save the document".into());
         }
         let file = self.1.borrow_mut().pop().ok_or("PdfCraft saved nothing")?;
@@ -50,6 +60,7 @@ impl Host for PdfHost<'_> {
     fn commands(&self) -> Vec<CommandInfo> {
         COMMANDS
             .iter()
+            .filter(|c| policy::allows(c.id, mutates(c.needs)).is_ok())
             .map(|c| CommandInfo { id: c.id.to_string(), label: c.label.to_string(), menu: c.menu.unwrap_or("").to_string(), mutates: mutates(c.needs) })
             .collect()
     }
@@ -64,6 +75,11 @@ impl Host for PdfHost<'_> {
 
     fn set_author(&mut self, name: &str) {
         self.0.comment_prefs.author = name.chars().take(200).collect();
+    }
+
+    fn set_policy(&mut self, mut p: Policy) {
+        p.mutating = COMMANDS.iter().filter(|c| mutates(c.needs)).map(|c| c.id.to_string()).chain(ALSO_MUTATING.iter().map(|s| s.to_string())).collect();
+        policy::set(p);
     }
 
     fn classify(&self, _name: &str) -> Classify {

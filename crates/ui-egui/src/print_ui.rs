@@ -232,6 +232,10 @@ fn default_printer(printers: &[spool::Printer]) -> Option<String> {
 
 impl PdfCraftApp {
     pub fn open_print(&mut self) {
+        // PDF actions and scripts open Print directly, not through the `print.dialog` command.
+        if pdfcraft_engine::kawan::allows("print.dialog", false).is_err() {
+            return;
+        }
         let Some((i, _)) = self.active_ids() else { return };
         let (printers, printers_loading) = match self.printer_source.clone() {
             // The list from the last time the dialog opened, until the fresh one arrives.

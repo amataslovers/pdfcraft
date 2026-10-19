@@ -381,6 +381,9 @@ pub fn menu(menu: &str) -> impl Iterator<Item = &'static CommandSpec> + '_ {
 
 /// Whether `spec` can run now, for the document `active` (the focused tab).
 pub fn is_enabled(spec: &CommandSpec, session: &Session, active: Option<DocId>) -> bool {
+    if crate::kawan::allows(spec.id, false).is_err() {
+        return false;
+    }
     let doc = active.and_then(|id| session.get(id));
     match spec.needs {
         Nothing => true,

@@ -7,6 +7,9 @@ pub mod protocol;
 pub mod shell;
 pub mod web;
 
+/// The canonical `policy.rs`, carried by the engine crate so its hooks can read it.
+pub use pdfcraft_engine::kawan as policy;
+
 use pdfcraft_ui_egui::PdfCraftApp;
 
 /// Route the app's saves through the bridge, wake the app when the page sends a message, and tell

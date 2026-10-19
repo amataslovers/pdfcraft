@@ -2689,6 +2689,9 @@ impl PdfCraftApp {
     /// not. Reading aloud and accessibility tools don't ask (assistive technology may read
     /// anything, §7.6.4.2).
     pub(crate) fn may_copy(&mut self, id: DocId) -> bool {
+        if pdfcraft_engine::kawan::allows("edit.copy", false).is_err() {
+            return false;
+        }
         if self.session.get(id).is_none_or(pdfcraft_engine::Document::allows_copying) {
             return true;
         }
