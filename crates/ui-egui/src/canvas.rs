@@ -3001,7 +3001,7 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
                     painter.rect_stroke(
                         sr,
                         CornerRadius::same(3),
-                        Stroke::new(2.5, Color32::from_rgba_unmultiplied(0x1B, 0x63, 0xE0, a)),
+                        Stroke::new(2.5, crate::kawan_brand::accent_or([0x1B, 0x63, 0xE0], a)),
                         egui::StrokeKind::Outside,
                     );
                     ui.ctx().request_repaint();

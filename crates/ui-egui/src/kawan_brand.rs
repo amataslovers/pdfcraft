@@ -1,9 +1,11 @@
-//! KawanEditor branding (logo, About line, identity labels). PdfCraft's own UI calls
-//! these at a few hook points; everything here reads the host policy (`pdfcraft_engine::kawan`)
-//! and falls back to KawanEditor's defaults.
+//! KawanEditor branding (logo, About line, identity labels) and the host's accent colour.
+//! PdfCraft's own UI calls these at a few hook points; everything here reads the host policy
+//! (`pdfcraft_engine::kawan`) and falls back to KawanEditor's defaults and PdfCraft's own colours.
 
-use egui::{Sense, vec2};
+use egui::{Color32, Sense, vec2};
 use pdfcraft_engine::kawan as policy;
+
+use crate::theme::Tokens;
 
 /// The default logo: KawanEditor's mark, 256 × 256.
 const DEFAULT_LOGO: &[u8] = include_bytes!("../assets/kawan-logo.png");
@@ -105,9 +107,49 @@ pub fn label(english: &str) -> String {
     if IDENTITY.contains(&english) { translated.replace("PdfCraft", policy::PRODUCT) } else { translated.to_owned() }
 }
 
+/// The host accent in place of PdfCraft's colour `upstream`, with `alpha` (unmultiplied).
+pub fn accent_or(upstream: [u8; 3], alpha: u8) -> Color32 {
+    let [r, g, b] = policy::accent().unwrap_or(upstream);
+    Color32::from_rgba_unmultiplied(r, g, b, alpha)
+}
+
+fn rgb(c: [u8; 3]) -> Color32 {
+    Color32::from_rgb(c[0], c[1], c[2])
+}
+
+/// PdfCraft's tokens with the host accent: the accent itself, its text colour on panels and
+/// the soft and selected washes, blended from the panel colour. Unchanged without an accent.
+pub fn tint(t: Tokens) -> Tokens {
+    match policy::accent() {
+        Some(a) => tint_with(t, a),
+        None => t,
+    }
+}
+
+fn tint_with(mut t: Tokens, a: [u8; 3]) -> Tokens {
+    let s = [t.panel.r(), t.panel.g(), t.panel.b()];
+    let (text, soft, selected) = if t.dark() {
+        (policy::mix(a, [255; 3], 0.35), policy::mix(s, a, 0.25), policy::mix(s, a, 0.22))
+    } else {
+        (policy::mix(a, [0; 3], 0.15), policy::mix(s, a, 0.12), policy::mix(s, a, 0.10))
+    };
+    t.accent = rgb(a);
+    t.badge_new = rgb(a);
+    t.accent_text = rgb(text);
+    t.accent_soft = rgb(soft);
+    t.selected = rgb(selected);
+    t
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::theme::ThemeKind;
+    use policy::Policy;
+
+    fn with_accent(accent: Option<[u8; 3]>) {
+        policy::set(Policy { accent, ..Policy::default() });
+    }
 
     #[test]
     fn bad_host_png_falls_back_to_default() {
@@ -201,5 +243,37 @@ mod tests {
         crate::i18n::set_current(crate::i18n::Lang::from_pref("de"));
         assert_eq!(label("About PdfCraft"), "Über KawanEditor");
         crate::i18n::set_current(crate::i18n::Lang::from_pref("en"));
+    }
+
+    #[test]
+    fn tint_is_identity_without_accent() {
+        with_accent(None);
+        for kind in [ThemeKind::Light, ThemeKind::Dark] {
+            let t = Tokens::for_kind(kind);
+            assert_eq!(format!("{:?}", tint(t)), format!("{t:?}"));
+        }
+        assert_eq!(accent_or([0x1B, 0x63, 0xE0], 255), Color32::from_rgb(0x1B, 0x63, 0xE0));
+    }
+
+    #[test]
+    fn tint_replaces_the_accent_family() {
+        let a = [0xE1, 0x1D, 0x48];
+        with_accent(Some(a));
+        let light = tint(Tokens::for_kind(ThemeKind::Light));
+        assert_eq!(light.accent, rgb(a));
+        assert_eq!(light.badge_new, rgb(a));
+        assert_eq!(light.accent_text, rgb([191, 25, 61]));
+        assert_eq!(light.accent_soft, rgb([251, 228, 233]));
+        assert_eq!(light.selected, rgb([252, 232, 237]));
+        let dark = tint(Tokens::for_kind(ThemeKind::Dark));
+        assert_eq!(dark.accent, rgb(a));
+        assert_eq!(dark.badge_new, rgb(a));
+        assert_eq!(dark.accent_text, rgb([236, 108, 136]));
+        assert_eq!(dark.accent_soft, rgb([85, 36, 47]));
+        assert_eq!(dark.selected, rgb([79, 36, 45]));
+        // Everything else stays PdfCraft's.
+        assert_eq!(dark.panel, Tokens::for_kind(ThemeKind::Dark).panel);
+        assert_eq!(accent_or([0x1B, 0x63, 0xE0], 255), rgb(a));
+        with_accent(None);
     }
 }

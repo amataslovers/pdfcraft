@@ -7,7 +7,7 @@ use pdfcraft_engine::commands::{COMMANDS, Needs};
 use pdfcraft_ui_egui::{PdfCraftApp, SaveTarget, kawan_brand};
 use serde_json::Value;
 
-use super::policy::{self, Policy};
+use super::policy::{self, Policy, Theme};
 use super::protocol::{Classify, CommandInfo, Host};
 use super::web::Outbox;
 
@@ -31,6 +31,15 @@ impl PdfHost<'_> {
 
 fn pdf_name(name: &str) -> String {
     if name.to_ascii_lowercase().ends_with(".pdf") { name.to_string() } else { format!("{name}.pdf") }
+}
+
+/// PdfCraft's `theme` option for the host's colour scheme (`System` follows the browser, live).
+fn theme_option(theme: Theme) -> &'static str {
+    match theme {
+        Theme::System => "system",
+        Theme::Light => "light",
+        Theme::Dark => "dark",
+    }
 }
 
 /// Commands that change the document; anything new upstream counts as changing (safer for view mode).
@@ -105,12 +114,14 @@ impl Host for PdfHost<'_> {
 
     fn set_policy(&mut self, mut p: Policy) {
         p.mutating = COMMANDS.iter().filter(|c| mutates(c.needs)).map(|c| c.id.to_string()).chain(ALSO_MUTATING.iter().map(|s| s.to_string())).collect();
-        let read_only = p.read_only;
+        let (read_only, theme) = (p.read_only, p.theme);
         policy::set(p);
         if read_only {
             // Only the layout: editable() and Session::apply already refuse edits.
             let _ = self.0.set_option("mode", "read");
         }
+        // Always, `System` too: applying the theme also applies the host accent.
+        let _ = self.0.set_option("theme", theme_option(theme));
     }
 
     fn classify(&self, _name: &str) -> Classify {

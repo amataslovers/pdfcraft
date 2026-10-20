@@ -4,6 +4,7 @@
 
 use std::rc::Rc;
 
+use egui::Color32;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use pdfcraft_engine::kawan::{self, Policy};
@@ -115,5 +116,33 @@ fn host_logo_without_href_is_not_a_link() {
         h.step();
         assert!(!h.output().platform_output.commands.iter().any(|c| matches!(c, egui::OutputCommand::OpenUrl(_))));
     }
+    kawan::set(Policy::default());
+}
+
+fn selection_stroke(h: &Harness<'static, PdfCraftApp>) -> Color32 {
+    h.ctx.global_style().visuals.selection.stroke.color
+}
+
+#[test]
+fn host_accent_reaches_visuals() {
+    kawan::set(Policy::default());
+    let h = harness(|_| {});
+    assert_eq!(selection_stroke(&h), Color32::from_rgb(0x1B, 0x63, 0xE0), "PdfCraft's own accent without a host accent");
+    drop(h);
+
+    let accent = Color32::from_rgb(0xE1, 0x1D, 0x48);
+    kawan::set(Policy { accent: Some([0xE1, 0x1D, 0x48]), ..Policy::default() });
+    let mut h = harness(|_| {});
+    assert_eq!(selection_stroke(&h), accent);
+    assert_eq!(h.ctx.global_style().visuals.hyperlink_color, Color32::from_rgb(191, 25, 61), "accent_text, light");
+    // What the bridge does on init: the host's theme, which applies the accent again.
+    h.state_mut().set_option("theme", "dark").unwrap();
+    h.run_steps(4);
+    assert_eq!(selection_stroke(&h), accent);
+    assert_eq!(h.ctx.global_style().visuals.hyperlink_color, Color32::from_rgb(236, 108, 136), "accent_text, dark");
+    // The host's theme back to System keeps the accent.
+    h.state_mut().set_option("theme", "system").unwrap();
+    h.run_steps(4);
+    assert_eq!(selection_stroke(&h), accent, "theme system");
     kawan::set(Policy::default());
 }
