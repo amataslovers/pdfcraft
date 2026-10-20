@@ -48,6 +48,7 @@ mod crop;
 mod drag_pointer;
 mod export_ui;
 mod js_ui;
+pub mod kawan_brand;
 mod marks_ui;
 mod measure_ui;
 mod ocr_ui;

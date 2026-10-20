@@ -88,3 +88,20 @@ fn upstream_policy_changes_nothing() {
     assert!(enabled(&s, id, "page.rotate"));
     s.apply(id, rotate()).unwrap();
 }
+
+/// Branding: no ArtCraft command or link is left (the Help menu, the home screen and About
+/// list them), and the one link left is the upstream source.
+#[test]
+fn no_artcraft_commands_or_links() {
+    use pdfcraft_engine::{commands::COMMANDS, links};
+    for c in COMMANDS {
+        assert!(!c.label.to_ascii_lowercase().contains("artcraft"), "{}: {}", c.id, c.label);
+    }
+    for id in ["help.discord", "help.website", "help.app_page"] {
+        assert!(command(id).is_none(), "{id} is gone");
+    }
+    for l in links::LINKS {
+        assert!(!l.url.contains("artcraft") && !l.url.contains("discord"), "{}", l.url);
+    }
+    assert_eq!(links::APP_PAGE, links::GITHUB);
+}

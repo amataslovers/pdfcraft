@@ -534,7 +534,7 @@ pub fn command_label(text: &str) -> String {
             return format!("{} {action}", t(prefix));
         }
     }
-    t(text).to_owned()
+    crate::kawan_brand::label(text)
 }
 
 /// A registered command's menu label: its `@id` catalog entry if there is one, otherwise

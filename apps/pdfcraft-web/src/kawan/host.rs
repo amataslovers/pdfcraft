@@ -4,7 +4,7 @@ use std::cell::Cell;
 
 use pdfcraft_engine::DocId;
 use pdfcraft_engine::commands::{COMMANDS, Needs};
-use pdfcraft_ui_egui::{PdfCraftApp, SaveTarget};
+use pdfcraft_ui_egui::{PdfCraftApp, SaveTarget, kawan_brand};
 use serde_json::Value;
 
 use super::policy::{self, Policy};
@@ -81,7 +81,13 @@ impl Host for PdfHost<'_> {
         COMMANDS
             .iter()
             .filter(|c| policy::allows(c.id, mutates(c.needs)).is_ok())
-            .map(|c| CommandInfo { id: c.id.to_string(), label: c.label.to_string(), menu: c.menu.unwrap_or("").to_string(), mutates: mutates(c.needs) })
+            // An identity label ("About PdfCraft") names KawanEditor, as in the menus.
+            .map(|c| CommandInfo {
+                id: c.id.to_string(),
+                label: kawan_brand::identity(c.label),
+                menu: c.menu.unwrap_or("").to_string(),
+                mutates: mutates(c.needs),
+            })
             .collect()
     }
 

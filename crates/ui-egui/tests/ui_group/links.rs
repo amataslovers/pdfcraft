@@ -18,24 +18,16 @@ fn harness(setup: impl FnOnce(&mut PdfCraftApp) + 'static) -> Harness<'static, P
 }
 
 #[test]
-fn discord_button_in_the_top_bar_opens_discord() {
+fn no_discord_button_in_the_top_bar() {
     let mut h = harness(|_| {});
-    h.get_by_label("Discord").click();
     h.run_steps(2);
-    assert_eq!(h.state().last_opened_url.as_deref(), Some(links::DISCORD));
-    assert_eq!(links::DISCORD, "https://discord.gg/artcraft");
+    assert!(h.query_by_label("Discord").is_none());
 }
 
 #[test]
 fn home_screen_links() {
-    for (label, url) in [
-        ("Join our Discord", links::DISCORD),
-        ("PdfCraft web page", "https://getartcraft.com/apps/pdfcraft"),
-        ("PdfCraft on GitHub", "https://github.com/storytold/pdfcraft"),
-        ("ArtCraft website", "https://getartcraft.com"),
-    ] {
+    for (label, url) in links::LINKS.iter().map(|l| (l.label, l.url)) {
         let mut h = harness(|_| {});
-        h.get_by_label("Join the ArtCraft community");
         h.get_by_label(label).click();
         h.run_steps(2);
         assert_eq!(h.state().last_opened_url.as_deref(), Some(url), "{label}");
@@ -50,10 +42,9 @@ fn about_dialog_shows_the_brand_and_links() {
         app.open_bytes("one.pdf", None, pdf.to_vec()).unwrap();
         app.dialog = Some(Dialog::About);
     });
-    assert!(h.query_all_by_label("ArtCraft").count() >= 2, "the mark and the wordmark (alt text)");
-    h.get_by_label("Join our Discord").click();
+    h.get_by_label("PdfCraft on GitHub").click();
     h.run_steps(2);
-    assert_eq!(h.state().last_opened_url.as_deref(), Some(links::DISCORD));
+    assert_eq!(h.state().last_opened_url.as_deref(), Some(links::GITHUB));
 }
 
 #[test]
